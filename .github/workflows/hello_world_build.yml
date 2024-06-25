@@ -1,0 +1,64 @@
+name: Build hello world
+run-name: Build hello world ${{ github.event_name }} by ${{ github.actor }}
+on: 
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.26.11
+      options: '--entrypoint /bin/bash'
+
+    steps:
+      - name: set_env
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" -o "${{ github.event_name }}" = "pull_request_target" ];then
+            echo "This is pull request"
+            echo "zephyr-rtk-project_REPOSITORY=${{ github.repository }}" >> $GITHUB_ENV
+            echo "zephyr-rtk-project_REF=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+          fi
+
+          if [ "${{ github.event_name }}" = "push" ];then
+            echo "This is push"
+            echo "zephyr-rtk-project_REPOSITORY=${{ github.repository }}" >> $GITHUB_ENV
+            echo "zephyr-rtk-project_REF=${{ github.ref }}" >> $GITHUB_ENV
+          fi
+
+      - name: print_env
+        run: |
+          echo "sdk-version -> ${ZSDK_VERSION}"
+          echo "zephyr-manifest-repository -> ${zephyr-rtk-project_REPOSITORY}"
+          echo "zephyr-manifest-ref: ${zephyr-rtk-project_REF}"
+
+      - name: setup sdk
+        shell: bash
+        run: |
+          echo "zephyr sdk -> zephyr-sdk-${ZSDK_VERSION}"
+          ls /opt/toolchains/zephyr-sdk-${ZSDK_VERSION}
+          /opt/toolchains/zephyr-sdk-${ZSDK_VERSION}/setup.sh -c
+    
+      - name: checkout manifest
+        uses: actions/checkout@v4
+        with:
+            repository: ${{ env.zephyr-rtk-project_REPOSITORY }}
+            path: "zephyr-rtk-project"
+            ref: ${{ env.zephyr-rtk-project_REF }}
+            fetch-depth: 0
+            persist-credentials: false
+    
+      - name: west update
+        shell: bash
+        run: |
+            cd zephyr-rtk-project
+            west update
+    
+      - name: do build
+        shell: bash
+        run: |
+            cd zephyr-rtk-project
+            cd zephyr
+            west build -b rtl8762gn_evb samples/hello_world
